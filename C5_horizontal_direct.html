@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Tetris — C5 Horizontal, Direct input, Icons visible</title>
+<style>
+  :root{
+    --bg: #000000;
+    --panel: rgba(20,20,20,0.98);
+    --text:#f7fbff;
+    --muted:#a9b7e6;
+    --grid:#040914;
+    --cell:30px;
+    --border:#2f4edb;
+    --accent:#7cf0ff;
+    --accent-2:#ffb86c;
+    --glow:0 16px 50px rgba(124,240,255,0.18);
+
+    --rightSidebarW:300px;
+    --menuW:min(240px, 55vw);
+    --panel-pad:12px;
+    --sidebar-gap:12px;
+
+    --panel-title-size:12px;
+    --metric-label-size:11px;
+    --metric-value-size:16px;
+
+    /* ============================================================
+       ✅ CHANGE HORIZONTAL GRID POSITION HERE
+       Positive X moves the board to the RIGHT
+       Negative X moves the board to the LEFT
+       Positive Y moves the board DOWN
+       Negative Y moves the board UP
+       (Applied only when isHorizontal === true)
+       ============================================================ */
+    --h-grid-offset-x: -120px;
+    --h-grid-offset-y: 0px;
+  }
+  *{box-sizing:border-box}
+  html,body{
+    height:100%;
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;
+    overflow-x:clip;
+    max-width:100vw;
+    -ms-overflow-style:none;
+    scrollbar-width:none;
+  }
+  body::-webkit-scrollbar{display:none}
+
+  /* ===== Fixed Menu (for menu-access conditions) ===== */
+  .menu-wrap{
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 1200;
+    width: auto;
+    height: auto;
+    pointer-events:none;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  .menu-toggle{
+    border: 1px solid rgba(124,240,255,0.3);
+    background: rgba(21,34,68,0.85);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    color: #f7fbff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2), 0 0 0 1px rgba(124,240,255,0.1) inset;
+    pointer-events: auto;
+    transition: all 0.2s ease;
+    user-select: none;
+  }
+  .menu-toggle:hover{
+    background: rgba(31,48,96,0.9);
+    border-color: rgba(124,240,255,0.5);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3), 0 0 0 1px rgba(124,240,255,0.2) inset;
+    transform: translateY(-1px);
+  }
+  .menu-toggle:active{
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2), 0 0 0 1px rgba(124,240,255,0.1) inset;
+  }
+  .menu-toggle:focus{ 
+    outline: 2px solid rgba(124,240,255,0.6); 
+    outline-offset: 2px; 
+  }
+  .menu-toggle-icon{
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    width: 16px;
+  }
+  .menu-toggle-icon span{
+    display: block;
+    height: 2px;
+    width: 100%;
+    background: #f7fbff;
+    border-radius: 1px;
+    transition: all 0.2s ease;
+  }
+  .menu-wrap.open .menu-toggle-icon span:nth-child(1){
+    transform: rotate(45deg) translate(5px, 5px);
+  }
+  .menu-wrap.open .menu-toggle-icon span:nth-child(2){
+    opacity: 0;
+  }
+  .menu-wrap.open .menu-toggle-icon span:nth-child(3){
+    transform: rotate(-45deg) translate(5px, -5px);
+  }
+  .menu-panel{
+    position: absolute;
+    margin-top: 8px;
+    left: 0;
+    width: var(--menuW);
+    background: rgba(21,34,68,0.98);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(124,240,255,0.25);
+    border-radius: 10px;
+    padding: 0;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(124,240,255,0.1) inset;
+    display: none;
+    max-height: calc(100vh - 80px);
+    overflow: hidden;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+  .menu-wrap.open .menu-panel{ 
+    display: block;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .menu-header{
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(124,240,255,0.15);
+    background: rgba(10,17,34,0.5);
+  }
+  .menu-header h3{
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 0.3px;
+  }
+  .menu-content{
+    padding: 12px;
+    overflow-y: auto;
+    max-height: calc(100vh - 140px);
+  }
+  .menu-content::-webkit-scrollbar{
+    width: 6px;
+  }
+  .menu-content::-webkit-scrollbar-track{
+    background: rgba(10,17,34,0.3);
+    border-radius: 3px;
+  }
+  .menu-content::-webkit-scrollbar-thumb{
+    background: rgba(124,240,255,0.3);
+    border-radius: 3px;
+  }
+  .menu-content::-webkit-scrollbar-thumb:hover{
+    background: rgba(124,240,255,0.5);
+  }
+  .menu-section{
+    background: rgba(124,240,255,0.05);
+    border: 1px solid rgba(124,240,255,0.15);
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+  .menu-section:last-child{
+    margin-bottom: 0;
+  }
+  .menu-section h4{
+    margin: 0 0 10px 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.7);
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .controls{
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+  .control-btn{
+    border-radius: 6px;
+    border: 1px solid rgba(124,240,255,0.4);
+    background: linear-gradient(135deg, rgba(31,91,136,0.8), rgba(26,45,92,0.8));
+    color: #f7fbff;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 50px;
+    width: 100%;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    transition: all 0.15s ease;
+    position: relative;
+  }
+  .control-btn:hover{
+    background: linear-gradient(135deg, rgba(42,106,160,0.9), rgba(32,51,100,0.9));
+    border-color: rgba(124,240,255,0.6);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  .control-btn:active{ 
+    transform: translateY(0);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  .control-btn-label{
+    position: absolute;
+    bottom: 4px;
+    font-size: 8px;
+    opacity: 0.7;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .viewport{
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    /* Fixed padding for horizontal conditions - same regardless of menu access */
+    padding-top:40px;
+    padding-right:20px;
+    padding-bottom:20px;
+    padding-left:0;
+  }
+  .viewport.menu-access{
+    /* Same padding as base viewport for horizontal conditions */
+    padding-top:40px;
+    padding-right:20px;
+    padding-bottom:20px;
+    padding-left:0;
+  }
+
+  .app{
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    margin:0 auto;
+    width:100%;
+  }
+
+  .board-card{
+    grid-area:board;
+    background:linear-gradient(160deg, rgba(124,240,255,0.06), rgba(255,184,108,0.04)), #060b16;
+    border:1.5px solid rgba(47,78,219,0.55);
+    border-radius:16px;
+    padding:16px;
+    display:grid;
+    gap:12px;
+    justify-items:center;
+    position:relative;
+    box-shadow:var(--glow);
+  }
+  .board-card.menu-access{
+    padding-bottom:168px;
+  }
+
+  /* ============================================================
+     ✅ MOVE ONLY THE HORIZONTAL GRID (board-card) WITH CSS VARIABLES
+     ============================================================ */
+  .board-card.horizontal-pos{
+    transform: translate(var(--h-grid-offset-x), var(--h-grid-offset-y));
+    will-change: transform;
+  }
+
+  .controls-panel{
+    width:100%;
+    background:var(--panel);
+    border:1.5px solid rgba(124,240,255,0.25);
+    border-radius:12px;
+    padding:10px 12px 12px;
+    box-shadow:var(--glow);
+    display:grid;
+    gap:10px;
+  }
+  .controls-under{
+    display:grid;
+    grid-template-columns:repeat(3,56px);
+    grid-template-rows:repeat(2,56px);
+    gap:8px;
+    justify-content:center;
+    margin-top:4px;
+  }
+  .controls-under .control-btn{
+    border-radius:12px;
+    border:1.5px solid rgba(124,240,255,0.55);
+    background:linear-gradient(135deg,#1f5b88,#1a2d5c);
+    color:#f7fbff;
+    font-size:22px;
+    font-weight:800;
+    cursor:pointer;
+    user-select:none;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35), 0 0 0 1px rgba(124,240,255,0.15);
+    min-height:auto;
+    width:auto;
+    flex-direction:row;
+    position:static;
+  }
+  .controls-under .control-btn:active{ 
+    transform:translateY(1px); 
+    background:linear-gradient(135deg,#2a6aa0,#203364); 
+  }
+  .controls-under .btn-up   { grid-column:2; grid-row:1; }
+  .controls-under .btn-left { grid-column:1; grid-row:2; }
+  .controls-under .btn-down { grid-column:2; grid-row:2; }
+  .controls-under .btn-right{ grid-column:3; grid-row:2; }
+
+  .rightbar{
+    position:fixed;
+    top:40px;
+    right:20px;
+    width:var(--rightSidebarW);
+    display:grid;
+    gap:var(--sidebar-gap);
+    min-width:0;
+    align-items:start;
+    align-content:start;
+    grid-auto-rows:max-content;
+    overflow-y:visible;
+    height:auto;
+    z-index:100;
+  }
+
+  .panel{
+    background:var(--panel);
+    border:1.5px solid rgba(124,240,255,0.25);
+    border-radius:14px;
+    padding:var(--panel-pad);
+    box-shadow:var(--glow);
+  }
+  .panel h3{
+    margin:0 0 8px 0;
+    font-size:12px;
+    color:var(--accent);
+  }
+
+  #previewPanelRight{ 
+    overflow:hidden;
+    min-height:200px;
+    height:200px;
+  }
+  
+  #scorePanel{
+    min-height:auto;
+  }
+
+  .metric{
+    display:grid;
+    grid-template-columns:1fr auto;
+    gap:8px;
+    align-items:center;
+    padding:8px 10px;
+    background:linear-gradient(125deg, rgba(124,240,255,0.08), rgba(255,184,108,0.07));
+    border-radius:10px;
+    border:1px solid rgba(124,240,255,0.25);
+  }
+  .metric .label{
+    color:var(--muted);
+    font-size:var(--metric-label-size);
+  }
+  .metric .value{
+    font-weight:800;
+    font-size:var(--metric-value-size);
+    color:var(--text);
+  }
+
+  .canvas-wrap{
+    background:linear-gradient(145deg,#0c142a,#080d1a);
+    padding:8px;
+    border-radius:12px;
+    border:2px solid rgba(124,240,255,0.35);
+    box-shadow:var(--glow);
+  }
+  canvas{
+    display:block;
+    image-rendering:pixelated;
+    outline:none;
+  }
+
+  .overlay{
+    position:fixed;
+    inset:0;
+    background:radial-gradient(circle at 25% 25%, rgba(124,240,255,0.12), rgba(0,0,0,0.82));
+    display:none;
+    place-items:center;
+    z-index:2500;
+  }
+  .overlay.show{ display:grid; }
+  .modal{
+    width:min(92vw,640px);
+    background:linear-gradient(150deg, rgba(21,34,68,0.96), rgba(10,17,34,0.96));
+    border:1.5px solid rgba(124,240,255,0.45);
+    border-radius:14px;
+    padding:16px 18px;
+    box-shadow:0 20px 60px rgba(0,0,0,.6), 0 0 0 1px rgba(255,184,108,0.2);
+  }
+  .modal h2{
+    margin:0 0 8px;
+    font-size:16px;
+    color:var(--accent);
+  }
+  .modal p{
+    margin:0 10px 10px;
+    color:#d8e4ff;
+    line-height:1.45;
+    white-space:pre-line;
+  }
+  .modal .btns{
+    display:flex;
+    gap:8px;
+    justify-content:flex-end;
+  }
+  .modal button{
+    background:linear-gradient(135deg,#1f5b88,#1a2d5c);
+    border:1.5px solid rgba(124,240,255,0.6);
+    color:#f7fbff;
+    border-radius:8px;
+    padding:8px 14px;
+    font-weight:800;
+    cursor:pointer;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35);
+  }
+</style>
+</head>
+<body>
+
+  <!-- Menu (only shown for menu-access conditions) -->
+  <div class="menu-wrap" id="controlMenu" aria-haspopup="true" aria-expanded="false" style="display:none;">
+    <button class="menu-toggle" id="menuToggle" aria-controls="menuPanel" aria-label="Open controls menu">
+      <div class="menu-toggle-icon">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <span>Game Menu</span>
+    </button>
+    <div class="menu-panel" id="menuPanel" role="menu">
+      <div class="menu-content">
+        <div class="menu-section">
+          <h4>Piece Manipulation</h4>
+          <div class="controls" id="controls" role="group" aria-label="On-screen arrow controls">
+            <button class="control-btn btn-up" data-action="up" aria-label="Rotate">
+              <span class="control-icon">↻</span>
+              <span class="control-btn-label">Spin</span>
+            </button>
+            <button class="control-btn btn-right" data-action="left" aria-label="Move left">
+              <span class="control-icon">←</span>
+              <span class="control-btn-label">Shift W</span>
+            </button>
+            <button class="control-btn btn-left" data-action="right" aria-label="Move right">
+              <span class="control-icon">→</span>
+              <span class="control-btn-label">Shift E</span>
+            </button>
+            <button class="control-btn btn-down" data-action="down" aria-label="Soft drop">
+              <span class="control-icon">⬇</span>
+              <span class="control-btn-label">Descend</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="viewport" id="viewport">
+    <div class="app" id="appUI">
+      <div class="board-card" id="boardCard">
+        <div class="canvas-wrap">
+          <canvas id="board" tabindex="0" aria-label="Tetris board"></canvas>
+        </div>
+
+        <!-- On-screen controls panel (only shown for icons-visible conditions) -->
+        <div class="controls-panel" id="controlsPanel" aria-label="On-screen controls" style="display:none;">
+          <div class="controls-under" id="controlsUnder" role="group" aria-label="On-screen controls">
+            <button class="control-btn btn-up" data-action="up" aria-label="Rotate">▲</button>
+            <button class="control-btn btn-left" data-action="left" aria-label="Move left">◀</button>
+            <button class="control-btn btn-down" data-action="down" aria-label="Soft drop">▼</button>
+            <button class="control-btn btn-right" data-action="right" aria-label="Move right">▶</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="rightbar" id="rightSidebar">
+      <div class="panel" id="previewPanelRight">
+        <h3>PREVIEW</h3>
+        <canvas id="previewRight" aria-label="Next pieces"></canvas>
+      </div>
+      <div class="panel" id="scorePanel">
+        <h3>FEEDBACK</h3>
+        <div class="metric"><div class="label">Score</div><div class="value" id="score">0</div></div>
+        <div class="metric"><div class="label">Level</div><div class="value" id="level">1</div></div>
+        <div class="metric"><div class="label">Lines</div><div class="value" id="lines">0</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="overlay" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <h2 id="modalTitle">Ready</h2>
+      <p id="modalMsg">Press OK to start.</p>
+      <div class="btns"><button id="okBtn">OK</button></div>
+    </div>
+  </div>
+
+<script>
+// ===== STANDALONE LOGGING SYSTEM =====
+// Mouse-only experiment logging with automatic CSV export
+(() => {
+  'use strict';
+  
+  // Extract condition ID from filename/title
+  function getConditionId() {
+    const title = document.title || '';
+    const filename = window.location.pathname || '';
+    if (title.includes('C1') || filename.includes('C1')) return 'C1';
+    if (title.includes('C2') || filename.includes('C2')) return 'C2';
+    if (title.includes('C3') || filename.includes('C3')) return 'C3';
+    if (title.includes('C4') || filename.includes('C4')) return 'C4';
+    if (title.includes('C5') || filename.includes('C5')) return 'C5';
+    if (title.includes('C6') || filename.includes('C6')) return 'C6';
+    if (title.includes('C7') || filename.includes('C7')) return 'C7';
+    if (title.includes('C8') || filename.includes('C8')) return 'C8';
+    return 'UNKNOWN';
+  }
+  
+  // Extract condition label from filename/path
+  function getConditionLabel() {
+    const filename = window.location.pathname || '';
+    const title = document.title || '';
+    // Check if this is a "without guidance" or "with guidance" condition
+    if (filename.includes('without guidance') || title.includes('without guidance')) {
+      return 'withoutGuidance';
+    }
+    if (filename.includes('with guidance') || title.includes('with guidance')) {
+      return 'withGuidance';
+    }
+    // Default for current set
+    return 'withoutGuidance';
+  }
+  
+  // Generate UUID v4
+  function generateUUID() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+  
+  // CSV escape: wrap in quotes, double internal quotes
+  function csvEscape(str) {
+    if (str === null || str === undefined) return '""';
+    const s = String(str);
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  
+  const conditionId = getConditionId();
+  const conditionLabel = getConditionLabel();
+  const sessionId = generateUUID();
+  const runId = generateUUID();
+  const startTime = Date.now();
+  
+  // Session metadata
+  const session = {
+    sessionId: sessionId,
+    runId: runId,
+    conditionId: conditionId,
+    conditionLabel: conditionLabel,
+    startTime: startTime,
+    endTime: null,
+    durationMs: null,
+    userAgent: navigator.userAgent,
+    screenWidth: screen.width,
+    screenHeight: screen.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight
+  };
+  
+  // Events array
+  const events = [];
+  let isLogging = false;
+  let lastMouseMoveTime = 0;
+  const MOUSE_THROTTLE_MS = 40; // ~25 Hz (every 40ms)
+  
+  // Log event
+  function logEvent(type, payload = {}) {
+    if (!isLogging && type !== 'pageLoad') return;
+    const ts = Date.now();
+    events.push({ ts, type, payload });
+  }
+  
+  // Get timestamp relative to start
+  function getRelativeTimestamp() {
+    return Date.now() - startTime;
+  }
+  
+  // Mouse event handlers
+  function handleMouseMove(e) {
+    if (!isLogging) return;
+    const now = Date.now();
+    if (now - lastMouseMoveTime < MOUSE_THROTTLE_MS) return;
+    lastMouseMoveTime = now;
+    
+    logEvent('mousemove', {
+      x: e.clientX,
+      y: e.clientY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight
+    });
+  }
+  
+  function handleMouseDown(e) {
+    if (!isLogging) return;
+    const target = e.target;
+    logEvent('mousedown', {
+      x: e.clientX,
+      y: e.clientY,
+      button: e.button,
+      targetTag: target.tagName || '',
+      targetId: target.id || '',
+      targetClass: target.className || ''
+    });
+  }
+  
+  function handleMouseUp(e) {
+    if (!isLogging) return;
+    const target = e.target;
+    logEvent('mouseup', {
+      x: e.clientX,
+      y: e.clientY,
+      button: e.button,
+      targetTag: target.tagName || '',
+      targetId: target.id || '',
+      targetClass: target.className || ''
+    });
+  }
+  
+  function handleClick(e) {
+    if (!isLogging) return;
+    const target = e.target;
+    logEvent('click', {
+      x: e.clientX,
+      y: e.clientY,
+      button: e.button,
+      targetTag: target.tagName || '',
+      targetId: target.id || '',
+      targetClass: target.className || ''
+    });
+  }
+  
+  // Generate CSV content
+  function generateCSV() {
+    const rows = [];
+    // Header
+    rows.push('ts,type,payload');
+    
+    // Add session metadata as first event
+    rows.push([
+      session.startTime,
+      'sessionMetadata',
+      JSON.stringify({
+        sessionId: session.sessionId,
+        runId: session.runId,
+        conditionId: session.conditionId,
+        conditionLabel: session.conditionLabel,
+        startTime: session.startTime,
+        endTime: session.endTime,
+        durationMs: session.durationMs,
+        userAgent: session.userAgent,
+        screenWidth: session.screenWidth,
+        screenHeight: session.screenHeight,
+        viewportWidth: session.viewportWidth,
+        viewportHeight: session.viewportHeight
+      })
+    ].map(csvEscape).join(','));
+    
+    // Add all events
+    for (const event of events) {
+      const payloadStr = JSON.stringify(event.payload);
+      rows.push([
+        event.ts,
+        event.type,
+        payloadStr
+      ].map(csvEscape).join(','));
+    }
+    
+    return rows.join('\n');
+  }
+  
+  // Show download prompt modal
+  function showDownloadPrompt() {
+    const overlay = document.getElementById('overlay');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalMsg = document.getElementById('modalMsg');
+    const okBtn = document.getElementById('okBtn');
+    
+    if (!overlay || !modalTitle || !modalMsg || !okBtn) return;
+    
+    modalTitle.textContent = 'Game Finished';
+    modalMsg.textContent = 'The game has finished. Do you want to download the CSV log file?';
+    
+    // Create buttons container
+    const btnsContainer = okBtn.parentElement;
+    btnsContainer.innerHTML = '';
+    
+    // Create Download CSV button
+    const downloadBtn = document.createElement('button');
+    downloadBtn.textContent = 'Download CSV';
+    downloadBtn.id = 'downloadCsvBtn';
+    downloadBtn.onclick = () => {
+      overlay.classList.remove('show');
+      performCSVDownload();
+    };
+    
+    // Create Not now button
+    const notNowBtn = document.createElement('button');
+    notNowBtn.textContent = 'Not now';
+    notNowBtn.onclick = () => {
+      overlay.classList.remove('show');
+    };
+    
+    btnsContainer.appendChild(downloadBtn);
+    btnsContainer.appendChild(notNowBtn);
+    
+    overlay.classList.add('show');
+  }
+  
+  // Perform CSV download
+  function performCSVDownload() {
+    const csv = generateCSV();
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    
+    // Generate filename: C5_withoutGuidance_{sessionId}_{YYYY-MM-DD_HH-mm-ss}.csv
+    const now = new Date();
+    const dateStr = now.getFullYear() + '-' +
+      String(now.getMonth() + 1).padStart(2, '0') + '-' +
+      String(now.getDate()).padStart(2, '0') + '_' +
+      String(now.getHours()).padStart(2, '0') + '-' +
+      String(now.getMinutes()).padStart(2, '0') + '-' +
+      String(now.getSeconds()).padStart(2, '0');
+    const filename = `${conditionId}_${conditionLabel}_${sessionId}_${dateStr}.csv`;
+    
+    // Create temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // Revoke URL after a delay
+    setTimeout(() => URL.revokeObjectURL(url), 100);
+  }
+  
+  // Start logging
+  function startLogging() {
+    if (isLogging) return;
+    isLogging = true;
+    lastMouseMoveTime = 0;
+    
+    // Update viewport dimensions at game start
+    session.viewportWidth = window.innerWidth;
+    session.viewportHeight = window.innerHeight;
+    
+    logEvent('gameStart', {
+      startTime: Date.now(),
+      viewportWidth: session.viewportWidth,
+      viewportHeight: session.viewportHeight
+    });
+  }
+  
+  // Stop logging (download prompt will be shown by game's modal callback)
+  function stopLogging() {
+    if (!isLogging) return;
+    isLogging = false;
+    
+    session.endTime = Date.now();
+    session.durationMs = session.endTime - session.startTime;
+    
+    logEvent('gameOver', {
+      endTime: session.endTime,
+      durationMs: session.durationMs
+    });
+  }
+  
+  // Setup event listeners (passive for performance)
+  document.addEventListener('mousemove', handleMouseMove, { passive: true });
+  document.addEventListener('mousedown', handleMouseDown, { passive: true });
+  document.addEventListener('mouseup', handleMouseUp, { passive: true });
+  document.addEventListener('click', handleClick, { passive: true });
+  
+  // Log page load
+  logEvent('pageLoad', {
+    conditionId: conditionId,
+    conditionLabel: conditionLabel,
+    sessionId: sessionId,
+    runId: runId,
+    timestamp: startTime
+  });
+  
+  // Expose logger API for game code
+  window.sessionLogger = {
+    startLogging,
+    stopLogging,
+    logEvent,
+    getRelativeTimestamp,
+    getConditionId: () => conditionId,
+    getSessionId: () => sessionId,
+    showDownloadPrompt
+  };
+  
+  console.log('Session logger initialized:', { conditionId, sessionId, runId });
+})();
+
+
+
+
+
+
+
+
+
+(() => {
+  // Condition C5: C5 Horizontal, Direct input, Icons visible
+  const isHorizontal = true;
+  const isMenuAccess = false;
+  const isReversed = false;
+
+  const DUR_BASE = 10 * 60 * 1000; // 10 minutes
+  
+  // C5: Guidance timing (first 60 seconds only)
+  const GUIDANCE_WINDOW_MS = 60_000;
+  let guidanceStartTime = null;
+
+  const boardCanvas = document.getElementById('board'), bctx = boardCanvas.getContext('2d');
+  const previewCanvas = document.getElementById('previewRight'), prctx = previewCanvas.getContext('2d');
+  const rightbar = document.getElementById('rightSidebar');
+  const boardCard = document.getElementById('boardCard');
+  const scoreEl = document.getElementById('score');
+  const levelEl = document.getElementById('level');
+  const linesEl = document.getElementById('lines');
+  const controlsUnder = document.getElementById('controlsUnder');
+  const controlsPanel = document.getElementById('controlsPanel');
+  const controlMenu = document.getElementById('controlMenu');
+  const controlsEl = document.getElementById('controls');
+  const viewport = document.getElementById('viewport');
+
+  const overlay = document.getElementById('overlay');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalMsg = document.getElementById('modalMsg');
+  const okBtn = document.getElementById('okBtn');
+
+  // Setup UI based on condition
+  if (isMenuAccess) {
+    controlsPanel.style.display = 'none';
+    controlMenu.style.display = 'block';
+    boardCard.classList.add('menu-access');
+    viewport.classList.add('menu-access');
+  } else {
+    controlsPanel.style.display = 'grid';
+    controlMenu.style.display = 'none';
+    boardCard.classList.remove('menu-access');
+    viewport.classList.remove('menu-access');
+  }
+
+  // ✅ Apply horizontal-grid position class ONLY for horizontal conditions
+  if (isHorizontal) boardCard.classList.add('horizontal-pos');
+  else boardCard.classList.remove('horizontal-pos');
+
+  // Setup control icons/labels based on condition
+  function setupControls() {
+    const upBtn = controlsUnder?.querySelector('.btn-up') || controlsEl?.querySelector('.btn-up');
+    const leftBtn = controlsUnder?.querySelector('.btn-left') || controlsEl?.querySelector('.btn-left');
+    const downBtn = controlsUnder?.querySelector('.btn-down') || controlsEl?.querySelector('.btn-down');
+    const rightBtn = controlsUnder?.querySelector('.btn-right') || controlsEl?.querySelector('.btn-right');
+
+    if (isReversed) {
+      // For reversed conditions: icons-visible gets reversed icons, menu-access keeps same icons but actions are reversed
+      if (upBtn) {
+        if (isMenuAccess) {
+          // Menu-access reversed: keep same visual appearance as direct, but actions will be reversed in handler
+          const icon = upBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = upBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '↻';
+          label.className = 'control-btn-label';
+          label.textContent = 'Spin';
+          upBtn.innerHTML = '';
+          upBtn.appendChild(icon);
+          upBtn.appendChild(label);
+          upBtn.setAttribute('data-action', 'up'); // Keep same data-action
+        } else {
+          // Icons-visible reversed: keep same visual appearance as direct, but actions will be reversed in handler
+          upBtn.textContent = '▲';
+          upBtn.setAttribute('data-action', 'up'); // Keep same data-action
+        }
+      }
+      if (leftBtn) {
+        if (isMenuAccess) {
+          // Menu-access reversed: keep same visual appearance
+          const icon = leftBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = leftBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '←';
+          label.className = 'control-btn-label';
+          label.textContent = 'Shift W';
+          leftBtn.innerHTML = '';
+          leftBtn.appendChild(icon);
+          leftBtn.appendChild(label);
+          leftBtn.setAttribute('data-action', 'left'); // Keep same data-action
+        } else {
+          // Icons-visible reversed: keep same visual appearance as direct
+          leftBtn.textContent = '◀';
+          leftBtn.setAttribute('data-action', 'left'); // Keep same data-action
+        }
+      }
+      if (rightBtn) {
+        if (isMenuAccess) {
+          // Menu-access reversed: keep same visual appearance
+          const icon = rightBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = rightBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '→';
+          label.className = 'control-btn-label';
+          label.textContent = 'Shift E';
+          rightBtn.innerHTML = '';
+          rightBtn.appendChild(icon);
+          rightBtn.appendChild(label);
+          rightBtn.setAttribute('data-action', 'right'); // Keep same data-action
+        } else {
+          // Icons-visible reversed: keep same visual appearance as direct
+          rightBtn.textContent = '▶';
+          rightBtn.setAttribute('data-action', 'right'); // Keep same data-action
+        }
+      }
+      if (downBtn) {
+        if (isMenuAccess) {
+          // Menu-access reversed: keep same visual appearance
+          const icon = downBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = downBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '⬇';
+          label.className = 'control-btn-label';
+          label.textContent = 'Descend';
+          downBtn.innerHTML = '';
+          downBtn.appendChild(icon);
+          downBtn.appendChild(label);
+          downBtn.setAttribute('data-action', 'down'); // Keep same data-action
+        } else {
+          // Icons-visible reversed: keep same visual appearance as direct
+          downBtn.textContent = '▼';
+          downBtn.setAttribute('data-action', 'down'); // Keep same data-action
+        }
+      }
+    } else {
+      // Direct icons and labels
+      if (upBtn) {
+        if (isMenuAccess) {
+          const icon = upBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = upBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '↻';
+          label.className = 'control-btn-label';
+          label.textContent = 'Spin';
+          upBtn.innerHTML = '';
+          upBtn.appendChild(icon);
+          upBtn.appendChild(label);
+        } else {
+          // C5: Horizontal mode - UP button moves up vertically, keep up arrow
+          upBtn.textContent = '▲';
+        }
+        upBtn.setAttribute('data-action', 'up');
+      }
+      if (leftBtn) {
+        if (isMenuAccess) {
+          const icon = leftBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = leftBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '←';
+          label.className = 'control-btn-label';
+          label.textContent = 'Shift W';
+          leftBtn.innerHTML = '';
+          leftBtn.appendChild(icon);
+          leftBtn.appendChild(label);
+        } else {
+          // C5: Horizontal mode - LEFT button rotates, show rotate icon
+          leftBtn.textContent = isHorizontal ? '↻' : '◀';
+        }
+        leftBtn.setAttribute('data-action', 'left');
+      }
+      if (rightBtn) {
+        if (isMenuAccess) {
+          const icon = rightBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = rightBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '→';
+          label.className = 'control-btn-label';
+          label.textContent = 'Shift E';
+          rightBtn.innerHTML = '';
+          rightBtn.appendChild(icon);
+          rightBtn.appendChild(label);
+        } else {
+          // C5: Horizontal mode - RIGHT button hard drops, show right arrow
+          rightBtn.textContent = '▶';
+        }
+        rightBtn.setAttribute('data-action', 'right');
+      }
+      if (downBtn) {
+        if (isMenuAccess) {
+          const icon = downBtn.querySelector('.control-icon') || document.createElement('span');
+          const label = downBtn.querySelector('.control-btn-label') || document.createElement('span');
+          icon.className = 'control-icon';
+          icon.textContent = '⬇';
+          label.className = 'control-btn-label';
+          label.textContent = 'Descend';
+          downBtn.innerHTML = '';
+          downBtn.appendChild(icon);
+          downBtn.appendChild(label);
+        } else {
+          // C5: Horizontal mode - DOWN button moves down vertically, keep down arrow
+          downBtn.textContent = '▼';
+        }
+        downBtn.setAttribute('data-action', 'down');
+      }
+    }
+  }
+  setupControls();
+
+  // Menu functionality (for menu-access conditions)
+  let menuIdleTimer = null;
+  function openMenu() {
+    controlMenu.classList.add('open');
+    controlMenu.setAttribute('aria-expanded', 'true');
+    scheduleMenuAutoClose();
+  }
+  function closeMenu() {
+    controlMenu.classList.remove('open');
+    controlMenu.setAttribute('aria-expanded', 'false');
+    clearMenuAutoClose();
+  }
+  function clearMenuAutoClose() {
+    if (menuIdleTimer) { clearTimeout(menuIdleTimer); menuIdleTimer = null; }
+  }
+  function scheduleMenuAutoClose() {
+    clearMenuAutoClose();
+    menuIdleTimer = setTimeout(() => { closeMenu(); }, 4000);
+  }
+  const menuToggle = document.getElementById('menuToggle');
+  const menuPanel = document.getElementById('menuPanel');
+  if (menuToggle) {
+    menuToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      controlMenu.classList.contains('open') ? closeMenu() : openMenu();
+    });
+  }
+  document.addEventListener('click', (e) => {
+    if (!controlMenu.contains(e.target)) closeMenu();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeMenu();
+  });
+  if (menuPanel) {
+    menuPanel.addEventListener('pointerdown', clearMenuAutoClose);
+    menuPanel.addEventListener('pointerup', clearMenuAutoClose);
+  }
+
+  // Game settings
+  const COLS = isHorizontal ? 20 : 10;
+  const ROWS = isHorizontal ? 10 : 20;
+  const CELL = 30; // Consistent cell size for all conditions
+
+  const COLORS = {
+    I: '#7cf0ff', O: '#ffd166', T: '#c084fc', S: '#7ee081',
+    Z: '#ff7b9c', J: '#7da2ff', L: '#ffb86c'
+  };
+  const SHAPES = {
+    I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+    O: [[1,1],[1,1]], T: [[0,1,0],[1,1,1],[0,0,0]],
+    S: [[0,1,1],[1,1,0],[0,0,0]], Z: [[1,1,0],[0,1,1],[0,0,0]],
+    J: [[1,0,0],[1,1,1],[0,0,0]], L: [[0,0,1],[1,1,1],[0,0,0]]
+  };
+  const TYPES = Object.keys(SHAPES);
+
+  let board, current, queue = [];
+  let score = 0, level = 1, lines = 0;
+  let dropInterval = 1000, lastTime = 0, acc = 0;
+  let normalDropInterval = 1000;
+  let hardDropActive = false;
+  let running = false;
+  let phaseDeadline = 0, tickId = null;
+  let keyboardEnabled = false;
+  let finished = false;
+
+  function scaleCanvas(canvas, ctx, cssW, cssH) {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    canvas.width = Math.floor(cssW * dpr);
+    canvas.height = Math.floor(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  // Canvas size based on grid dimensions (same as original)
+  scaleCanvas(boardCanvas, bctx, COLS * CELL, ROWS * CELL);
+
+  function drawPreviewRight() {
+    const previewCount = 1;
+    const dpr = window.devicePixelRatio || 1;
+    // Use fixed height for preview panel to ensure consistency across all conditions
+    const previewPanel = document.getElementById('previewPanelRight');
+    const fixedPreviewHeight = 200; // Fixed height in pixels for consistency
+    previewPanel.style.height = fixedPreviewHeight + 'px';
+
+    const panelH = fixedPreviewHeight;
+    const titleH = 18, pad = 12, gap = 0, bottomPad = 10;
+    const avail = Math.max(60, panelH - titleH - pad - pad - bottomPad);
+    const itemH = Math.max(70, Math.min(110, Math.floor((avail - gap * (previewCount - 1)) / previewCount)));
+    const totalH = itemH * previewCount + gap * (previewCount - 1);
+
+    const canvasW = Math.max(140, parseFloat(getComputedStyle(rightbar).width || '220') - 24);
+
+    previewCanvas.style.width = canvasW + 'px';
+    previewCanvas.style.height = totalH + 'px';
+    previewCanvas.width = Math.floor(canvasW * dpr);
+    previewCanvas.height = Math.floor(totalH * dpr);
+    prctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    prctx.fillStyle = '#0a1124';
+    prctx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+    const type = queue[0];
+    if (!type) return;
+    const m = SHAPES[type];
+    const rows = m.length, cols = m[0].length;
+    const maxDim = Math.max(rows, cols);
+    const blockGap = 4;
+    const cellWithGap = Math.floor(itemH / maxDim);
+    const cell = cellWithGap - blockGap;
+    const totalW = cols * cellWithGap - blockGap;
+    const totalHBlock = rows * cellWithGap - blockGap;
+    const padX = Math.floor((canvasW - totalW) / 2);
+    const padY = Math.floor((itemH - totalHBlock) / 2);
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      if (!m[y][x]) continue;
+      const px = padX + x * cellWithGap;
+      const py = padY + y * cellWithGap + 1;
+      prctx.fillStyle = COLORS[type];
+      prctx.fillRect(px, py, cell, cell);
+    }
+  }
+
+  function syncSidebars() {
+    // Don't sync rightbar height to board - let it be auto-sized for consistency
+    // The preview and feedback panels will maintain their own consistent sizes
+    drawPreviewRight();
+  }
+  window.addEventListener('resize', syncSidebars);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(syncSidebars);
+
+  function newBoard() { board = Array.from({ length: ROWS }, () => Array(COLS).fill(null)); }
+  function bag() {
+    const a = TYPES.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    queue.push(...a);
+  }
+  function collide(g, p) {
+    const m = p.matrix;
+    for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) {
+      if (!m[y][x]) continue;
+      const ny = p.y + y, nx = p.x + x;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) return true;
+      if (ny >= 0 && g[ny][nx]) return true;
+    }
+    return false;
+  }
+  function getShadowY(g, p) {
+    let shadowY = p.y;
+    while (true) {
+      const test = { ...p, y: shadowY + 1 };
+      if (collide(g, test)) break;
+      shadowY++;
+    }
+    return shadowY;
+  }
+  function getShadowX(g, p) {
+    let shadowX = p.x;
+    while (true) {
+      const test = { ...p, x: shadowX + 1 };
+      if (collide(g, test)) break;
+      shadowX++;
+    }
+    return shadowX;
+  }
+  function spawn() {
+    if (queue.length < 7) bag();
+    const type = queue.shift();
+    const piece = {
+      type,
+      matrix: SHAPES[type].map(r => r.slice()),
+      x: isHorizontal ? 0 : Math.floor((COLS - SHAPES[type][0].length) / 2),
+      y: isHorizontal ? Math.floor((ROWS - SHAPES[type].length) / 2) : 0
+    };
+    if (collide(board, piece)) { newBoard(); bag(); return spawn(); }
+    return piece;
+  }
+  function merge(g, p) {
+    const m = p.matrix;
+    for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) {
+      if (m[y][x] && p.y + y >= 0) g[p.y + y][p.x + x] = p.type;
+    }
+  }
+  function clearLines() {
+    let c = 0;
+    if (isHorizontal) {
+      // Horizontal: check columns instead of rows
+      for (let x = COLS - 1; x >= 0;) {
+        let full = true;
+        for (let y = 0; y < ROWS; y++) {
+          if (!board[y][x]) { full = false; break; }
+        }
+        if (full) {
+          for (let y = 0; y < ROWS; y++) board[y].splice(x, 1);
+          for (let y = 0; y < ROWS; y++) board[y].unshift(null);
+          c++;
+        } else x--;
+      }
+    } else {
+      // Vertical: check rows
+      for (let y = ROWS - 1; y >= 0;) {
+        if (board[y].every(v => v)) {
+          board.splice(y, 1);
+          board.unshift(Array(COLS).fill(null));
+          c++;
+        } else y--;
+      }
+    }
+    if (c > 0) {
+      const s = [0, 100, 300, 500, 800];
+      score += s[c] * level;
+      lines += c;
+      level = 1 + Math.floor(lines / 10);
+      const newDropInterval = Math.max(100, 1000 - (level - 1) * 70);
+      normalDropInterval = newDropInterval;
+      if (!hardDropActive) {
+        dropInterval = newDropInterval;
+      }
+      updateHud();
+    }
+  }
+  function updateHud() {
+    scoreEl.textContent = score;
+    levelEl.textContent = level;
+    linesEl.textContent = lines;
+  }
+
+  // C5: Check if guidance is still active (first 60 seconds only)
+  function guidanceActive() {
+    return guidanceStartTime !== null && (Date.now() - guidanceStartTime < GUIDANCE_WINDOW_MS);
+  }
+
+  function drawBoard() {
+    bctx.fillStyle = '#050914';
+    bctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+
+    bctx.beginPath();
+    bctx.strokeStyle = 'rgba(124, 240, 255, 0.35)';
+    bctx.lineWidth = 1;
+    for (let x = 0; x <= COLS; x++) {
+      const px = x * CELL;
+      bctx.moveTo(px, 0);
+      bctx.lineTo(px, ROWS * CELL);
+    }
+    for (let y = 0; y <= ROWS; y++) {
+      const py = y * CELL;
+      bctx.moveTo(0, py);
+      bctx.lineTo(COLS * CELL, py);
+    }
+    bctx.stroke();
+
+    const blockGap = 4;
+    const blockSize = CELL - blockGap;
+
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      const t = board[y][x];
+      if (!t) continue;
+      const px = x * CELL + blockGap / 2, py = y * CELL + blockGap / 2;
+      bctx.fillStyle = COLORS[t];
+      bctx.fillRect(px, py, blockSize, blockSize);
+    }
+
+    if (current) {
+      if (!isHorizontal) {
+        const shadowY = getShadowY(board, current);
+        if (shadowY > current.y) {
+          const m = current.matrix;
+          bctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          bctx.lineWidth = 2;
+          for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) {
+            if (!m[y][x]) continue;
+            const gx = (current.x + x) * CELL + blockGap / 2, gy = (shadowY + y) * CELL + blockGap / 2;
+            if (gy >= 0) {
+              bctx.strokeRect(gx, gy, blockSize, blockSize);
+            }
+          }
+        }
+      }
+
+      // Current piece
+      const m = current.matrix;
+      for (let y = 0; y < m.length; y++) for (let x = 0; x < m[y].length; x++) {
+        if (!m[y][x]) continue;
+        const gx = (current.x + x) * CELL + blockGap / 2, gy = (current.y + y) * CELL + blockGap / 2;
+        if ((isHorizontal && gx >= 0) || (!isHorizontal && gy >= 0)) {
+          bctx.fillStyle = COLORS[current.type];
+          bctx.fillRect(gx, gy, blockSize, blockSize);
+        }
+      }
+    }
+  }
+
+  // Keyboard controls disabled - mouse-only mode
+  // window.addEventListener('keydown', e => {
+  //   if (finished) return;
+  //   if (!running || !keyboardEnabled) return;
+  //   if (['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp'].includes(e.key)) e.preventDefault();
+  //   if (e.key === 'ArrowLeft') move(-1, 0);
+  //   else if (e.key === 'ArrowRight') move(1, 0);
+  //   else if (e.key === 'ArrowDown') move(0, 1);
+  //   else if (e.key === 'ArrowUp') rotate();
+  // });
+
+  // Control handlers
+  function handleControlAction(action) {
+    if (finished || !running) return;
+    
+    if (isHorizontal) {
+      // Horizontal mode
+      if (isReversed) {
+        // Reversed horizontal
+        if (isMenuAccess) {
+          // Menu-access reversed: same visual buttons, but reversed actions
+          if (action === 'up') move(1, 0);      // ↻ Spin button → moves right (forward)
+          else if (action === 'left') move(0, 1);  // ← Shift W button → moves down vertically
+          else if (action === 'right') move(0, -1); // → Shift E button → moves up vertically
+          else if (action === 'down') rotate();     // ⬇ Descend button → rotates
+        } else {
+          // Icons-visible reversed: same visual buttons, but reversed actions
+          if (action === 'up') move(1, 0);      // ▲ button → moves right (forward)
+          else if (action === 'left') move(0, 1);  // ◀ button → moves down vertically
+          else if (action === 'right') move(0, -1); // ▶ button → moves up vertically
+          else if (action === 'down') rotate();     // ▼ button → rotates
+        }
+      } else {
+        // Direct horizontal - C5: UP/DOWN move vertically, LEFT/RIGHT are secondary actions
+        if (action === 'up') move(0, -1);      // UP button → moves up vertically
+        else if (action === 'down') move(0, 1);  // DOWN button → moves down vertically
+        else if (action === 'left') rotate();    // LEFT button → rotates
+        else if (action === 'right') hardDrop();  // RIGHT button → hard drop
+      }
+    } else {
+      // Vertical mode
+      if (isReversed) {
+        // Reversed vertical - for menu-access, buttons look the same but actions are reversed
+        if (isMenuAccess) {
+          // Menu-access reversed: same visual buttons, but reversed actions
+          if (action === 'up') move(0, 1);      // ↻ Spin button → moves down
+          else if (action === 'left') move(1, 0);  // ← Shift W button → moves right
+          else if (action === 'right') move(-1, 0); // → Shift E button → moves left
+          else if (action === 'down') rotate();     // ⬇ Descend button → rotates
+        } else {
+          // Icons-visible reversed: same visual buttons, but reversed actions
+          if (action === 'up') move(0, 1);      // ▲ button → moves down
+          else if (action === 'left') move(1, 0);  // ◀ button → moves right
+          else if (action === 'right') move(-1, 0); // ▶ button → moves left
+          else if (action === 'down') rotate();     // ▼ button → rotates
+        }
+      } else {
+        // Direct vertical
+        if (action === 'left') move(-1, 0);
+        else if (action === 'right') move(1, 0);
+        else if (action === 'down') move(0, 1);
+        else if (action === 'up') rotate();
+      }
+    }
+  }
+
+  if (controlsUnder) {
+    controlsUnder.addEventListener('click', e => {
+      const btn = e.target.closest('.control-btn');
+      if (!btn) return;
+      handleControlAction(btn.dataset.action);
+    });
+  }
+  if (controlsEl) {
+    controlsEl.addEventListener('click', e => {
+      const btn = e.target.closest('.control-btn');
+      if (!btn) return;
+      handleControlAction(btn.dataset.action);
+    });
+  }
+
+  function move(dx, dy) {
+    if (finished) return;
+    const t = { ...current, x: current.x + dx, y: current.y + dy };
+    if (!collide(board, t)) { current = t; drawBoard(); }
+    else if ((isHorizontal && dx === 1) || (!isHorizontal && dy === 1)) {
+      // Piece has landed - reset hard drop speed if active
+      if (hardDropActive) {
+        hardDropActive = false;
+        dropInterval = normalDropInterval;
+      }
+      merge(board, current);
+      clearLines();
+      current = spawn();
+      syncSidebars();
+      drawBoard();
+    }
+  }
+  function rotate() {
+    if (finished) return;
+    const N = current.matrix.length;
+    const r = Array.from({ length: N }, () => Array(N).fill(0));
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) r[x][N - 1 - y] = current.matrix[y][x];
+    for (const k of [0, -1, 1, -2, 2]) {
+      const sh = { ...current, matrix: r, x: current.x + k };
+      if (!collide(board, sh)) { current = sh; drawBoard(); return; }
+    }
+  }
+  function hardDrop() {
+    if (finished) return;
+    // Every press increases speed (same speed boost as first four conditions)
+    if (!hardDropActive) {
+      hardDropActive = true;
+      normalDropInterval = dropInterval;
+    }
+    dropInterval = 150; // Faster drop speed when hard drop button is pressed
+  }
+
+  function step(t) {
+    if (!running || finished) return;
+    if (!lastTime) lastTime = t;
+    acc += t - lastTime;
+    lastTime = t;
+    if (acc >= dropInterval) {
+      acc = 0;
+      if (isHorizontal) move(1, 0);
+      else move(0, 1);
+    }
+    drawBoard();
+    requestAnimationFrame(step);
+  }
+  function startLoop() {
+    if (finished) return;
+    running = true;
+    requestAnimationFrame(step);
+  }
+  function stopLoop() { running = false; }
+
+  function startTimer(ms, onTick, onDone) {
+    phaseDeadline = Date.now() + ms;
+    const tick = () => {
+      const left = Math.max(0, phaseDeadline - Date.now());
+      onTick(left);
+      if (left <= 0) {
+        clearInterval(tickId);
+        tickId = null;
+        onDone && onDone();
+      }
+    };
+    if (tickId) clearInterval(tickId);
+    tickId = setInterval(tick, 200);
+    tick();
+  }
+  function stopTimer() {
+    if (tickId) {
+      clearInterval(tickId);
+      tickId = null;
+    }
+  }
+
+  function minimalModal(title, msg, onOk) {
+    modalTitle.textContent = title;
+    modalMsg.textContent = msg;
+    overlay.classList.add('show');
+    okBtn.onclick = () => {
+      overlay.classList.remove('show');
+      // Start logging when game starts
+      if (window.sessionLogger) {
+        window.sessionLogger.startLogging();
+      }
+      onOk && onOk();
+    };
+  }
+
+  function resetBoardStats() {
+    score = 0;
+    level = 1;
+    lines = 0;
+    dropInterval = 1000;
+    normalDropInterval = 1000;
+    hardDropActive = false;
+    lastTime = 0;
+    acc = 0;
+    queue = [];
+    finished = false;
+    // Reset guidance timing - guidance must be OFF before OK
+    guidanceStartTime = null;
+    newBoard();
+    bag();
+    current = spawn();
+    updateHud();
+    syncSidebars();
+    drawBoard();
+  }
+
+  function startBaseline() {
+    resetBoardStats();
+    minimalModal('Ready', 'Press OK to start the game.', () => {
+      // Start guidance timer - guidance appears immediately after OK
+      guidanceStartTime = Date.now();
+      // Turn off guidance after 60 seconds
+      setTimeout(() => {
+        guidanceStartTime = null;
+        drawBoard(); // Redraw to remove guidance visuals
+      }, GUIDANCE_WINDOW_MS);
+      startLoop();
+      startTimer(
+        DUR_BASE,
+        () => { /* baseline shows no timer in UI */ },
+        () => {
+          stopLoop();
+          stopTimer();
+          running = false;
+          finished = true;
+          // Stop logging and trigger CSV download
+          if (window.sessionLogger) {
+            window.sessionLogger.stopLogging();
+          }
+          minimalModal(
+            'Game Finished',
+            'The game is now finished.',
+            () => {
+              // Show download prompt after user closes the "Game Finished" modal
+              setTimeout(() => {
+                if (window.sessionLogger && window.sessionLogger.showDownloadPrompt) {
+                  window.sessionLogger.showDownloadPrompt();
+                }
+              }, 100);
+            }
+          );
+        }
+      );
+    });
+  }
+
+  function drawPreviewInit() {
+    syncSidebars();
+  }
+
+  drawPreviewInit();
+  startBaseline();
+  if (isMenuAccess) openMenu();
+})();
+</script>
+</body>
+</html>
